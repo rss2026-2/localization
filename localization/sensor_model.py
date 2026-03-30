@@ -1,6 +1,6 @@
 import numpy as np
 from scan_simulator_2d import PyScanSimulator2D
-# Try to change to just `from scan_simulator_2d import PyScanSimulator2D` 
+# Try to change to just `from scan_simulator_2d import PyScanSimulator2D`
 # if any error re: scan_simulator_2d occurs
 
 from tf_transformations import euler_from_quaternion
@@ -31,11 +31,11 @@ class SensorModel:
 
         ####################################
         # Adjust these parameters
-        self.alpha_hit = 0
-        self.alpha_short = 0
-        self.alpha_max = 0
-        self.alpha_rand = 0
-        self.sigma_hit = 0
+        self.alpha_hit = 0.74
+        self.alpha_short = 0.07
+        self.alpha_max = 0.07
+        self.alpha_rand = 0.12
+        self.sigma_hit = 8.0
 
         # Your sensor table will be a `table_width` x `table_width` np array:
         self.table_width = 201
@@ -71,7 +71,7 @@ class SensorModel:
         """
         Generate and store a table which represents the sensor model.
 
-        For each discrete computed range value, this provides the probability of 
+        For each discrete computed range value, this provides the probability of
         measuring any (discrete) range. This table is indexed by the sensor model
         at runtime by discretizing the measurements and computed ranges from
         RangeLibc.
@@ -86,8 +86,31 @@ class SensorModel:
         returns:
             No return type. Directly modify `self.sensor_model_table`.
         """
+        ####################################
 
-        raise NotImplementedError
+        # rows = z, cols = d
+        rows, cols = np.indices(self.sensor_model_table.shape)
+
+        # calculate the four cases
+        p_hit = np.exp(-(rows-cols)**2/(2*self.sigma_hit**2))/np.sqrt(2*np.pi*self.sigma_hit**2)
+        p_hit /= np.sum(p_hit, axis=0, keepdims=True)
+        p_hit *= self.alpha_hit
+
+        mask_short = (cols > 0) & (rows >= 0) & (rows <= cols)
+        p_short = np.zeros_like(rows, dtype=float)
+        p_short[mask_short] = self.alpha_short * (2.0 / cols[mask_short]) * (
+            1.0 - rows[mask_short] / cols[mask_short]
+        )
+
+        p_max = np.where(rows == self.table_width - 1, self.alpha_max, 0.0)
+
+        p_rand = self.alpha_rand * np.ones_like(rows) / self.table_width
+        self.sensor_model_table = p_hit + p_short + p_max + p_rand
+
+        # normalize
+        self.sensor_model_table /= self.sensor_model_table.sum(axis=0, keepdims=True)
+
+        ####################################
 
     def evaluate(self, particles, observation):
         """
@@ -114,16 +137,65 @@ class SensorModel:
             return
 
         ####################################
-        # TODO
-        # Evaluate the sensor model here!
-        #
-        # You will probably want to use this function
-        # to perform ray tracing from all the particles.
-        # This produces a matrix of size N x num_beams_per_particle 
 
         scans = self.scan_sim.scan(particles)
 
+        # convert lidar observations and ray tracing scans from meters to pixels
+        scans /= self.resolution * self.lidar_scale_to_map_scale # where is map_resolution defined?
+        obs = np.copy(observation)
+        obs /= self.resolution * self.lidar_scale_to_map_scale
+
+        # clip to min and max distances
+        scans = np.clip(scans, 0, self.table_width-1).astype(int)
+        obs = np.clip(obs, 0, self.table_width-1).astype(int)
+
+        # assign normalized, culmulative sum weights to each particle, combine beam weights
+        weights = self.sensor_model_table[obs,scans]
+        weights = np.prod(weights, axis=1)
+
+        return weights
         ####################################
+
+    def resample(self, particles, weights):
+        """
+        Resamples the particles given the probability of each particle occuring.
+        Applies some small noise to prevent states collapsing. Returns the a Nx3 array of new particles.
+
+        :param particles: An Nx3 matrix of the form:
+            [x0 y0 theta0]
+            [x1 y0 theta1]
+            [    ...     ]
+        :param weights: An Nx1 vector that stores the probability of each particle occuring.
+        """
+        if weights is None:
+            return
+
+        weights = weights/sum(weights)
+        weights = np.cumsum(weights)
+
+        # resample the particles proportional to their weights
+        # here i'm using low variance sampling. read about it here: https://robotics.stackexchange.com/questions/16093/why-does-the-low-variance-resampling-algorithm-for-particle-filters-work#:~:text=Imagine%20laying%20out%20a%20yardstick,many%20offspring%20the%20parents%20produce.
+        rng = np.random.default_rng()
+        n = len(particles)
+        random = rng.uniform(low=0,high=1/n)
+        vals = np.arange(1, n + 1)
+        pointers = random + (vals - 1)/n
+        pointers = np.clip(pointers,0,1)
+        indices = np.searchsorted(weights,pointers,side="left")
+        sampled_particles = particles[indices]
+
+        # blur the particles after resampling with some gaussian noise
+        noise_x = np.random.normal(loc=0.0, scale = 1.0, size = n)
+        noise_y = np.random.normal(loc=0.0, scale = 1.0, size = n)
+        noise_z = np.random.normal(loc=0.0, scale = 1.0, size = n)
+
+        sampled_particles[:,0] = sampled_particles[:,0] + noise_x
+        sampled_particles[:,1] = sampled_particles[:,1] + noise_y
+        sampled_particles[:,2] = sampled_particles[:,2] + noise_z
+
+        #TODO: clip the particles after adding the noise
+
+        return sampled_particles
 
     def map_callback(self, map_msg):
         # Convert the map to a numpy array
