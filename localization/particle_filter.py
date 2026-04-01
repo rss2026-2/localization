@@ -13,6 +13,9 @@ assert rclpy
 from tf_transformations import euler_from_quaternion, quaternion_from_euler
 import numpy as np
 from sensor_msgs.msg import PointCloud2
+from sensor_msgs_py import point_cloud2
+from std_msgs.msg import Header
+from geometry_msgs.msg import TransformStamped
 
 class ParticleFilter(Node):
 
@@ -67,10 +70,7 @@ class ParticleFilter(Node):
         self.odom_pub = self.create_publisher(Odometry, "/pf/pose/odom", 1)
 
         # added
-        self.particle_pub = self.create_publisher(
-            PointCloud2,
-
-        )
+        self.particle_pub = self.create_publisher(PointCloud2, "/particles", 1)
 
         # Initialize the models
         self.motion_model = MotionModel(self)
@@ -153,15 +153,9 @@ class ParticleFilter(Node):
 
         # add some noise to each of the poses
         noise = np.random.normal(0,1.0, (self.num_particles,3))
-        self.particles = self.particles + noise
-
-        self.get_logger().info("Particles Initialized")
-
-    def visualize_particles(self, particles):
-        """"
-
-        """
-        self.particle_pub
+        self.particles = self.particles + noise 
+        
+        self.get_logger().info("Particles Initialized")    
 
     def update_average(self):
         """
@@ -204,7 +198,21 @@ class ParticleFilter(Node):
         t.transform.rotation.w = w
 
         return t
+        
+    def visualize_particles(self, particles):
+        """
+        Visualize the particles to rviz
+        """
+        # Get the positions and hard code z to be 0
+        positions_3d = np.column_stack(particles[:, :2], np.zeros(particles.shape[0]))
+        
+        header = Header()
+        header.stamp = self.get_clock().now().to_msg()
+        header.frame_id = 'base_link'
 
+        pc2_msg = point_cloud2.create_cloud_xyz32(header, positions_3d)
+
+        self.particle_pub.publish(pc2_msg)
 
 def main(args=None):
     rclpy.init(args=args)
