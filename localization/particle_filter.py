@@ -10,7 +10,7 @@ import rclpy
 assert rclpy
 
 # added
-from tf_transformations import euler_from_quaternion
+from tf_transformations import euler_from_quaternion, quaternion_from_euler
 import numpy as np
 from sensor_msgs.msg import PointCloud2
 
@@ -29,15 +29,15 @@ class ParticleFilter(Node):
         #     a twist component, you will only be provided with the
         #     twist component, so you should rely only on that
         #     information, and *not* use the pose component.
-        
+
         self.declare_parameter('odom_topic', "/odom")
         self.declare_parameter('scan_topic', "/scan")
-        self.declare_parameter('base_link_topic', "/base_link_pf") # change to base_link for testing on car
+        self.declare_parameter('base_link_frame', "base_link_pf") # change to base_link for testing on car
         self.declare_parameter('num_particles', 100)
-        
+
         self.scan_topic = self.get_parameter("scan_topic").get_parameter_value().string_value
         self.odom_topic = self.get_parameter("odom_topic").get_parameter_value().string_value
-        self.odom_topic = self.get_parameter("base_link_topic").get_parameter_value().string_value # added
+        self.base_link_frame = self.get_parameter("base_link_frame").get_parameter_value().string_value # added
 
         self.laser_sub = self.create_subscription(LaserScan, self.scan_topic,
                                                   self.laser_callback,
@@ -65,17 +65,17 @@ class ParticleFilter(Node):
         #     "/map" frame.
 
         self.odom_pub = self.create_publisher(Odometry, "/pf/pose/odom", 1)
-        
+
         # added
         self.particle_pub = self.create_publisher(
             PointCloud2,
-            
+
         )
 
         # Initialize the models
         self.motion_model = MotionModel(self)
         self.sensor_model = SensorModel(self)
-        
+
         self.num_particles = self.get_parameter("num_particles").value # number of particles we are using
 
         self.get_logger().info("=============+READY+=============")
@@ -90,13 +90,13 @@ class ParticleFilter(Node):
         # Publish a transformation frame between the map
         # and the particle_filter_frame.
 
-        
-        
-        
-    
+
+
+
+
     def laser_callback(self, laser_msg):
         """
-        LaserScan's callback to update particles with sensor model. 
+        LaserScan's callback to update particles with sensor model.
 
         Args:
             laser_msg (_type_): LaserScan
@@ -113,10 +113,10 @@ class ParticleFilter(Node):
         Args:
             odometry_msg (_type_): Odometry
         """
-        
-        # Get the current xyz position of the robot 
+
+        # Get the current xyz position of the robot
         current_odom_pose = odometry_msg.pose.pose
-        
+
         # Get the rotation (yaw from the euler angles)
         current_odom_quat = current_odom_pose.orientation
         current_odom_quat_list = [current_odom_quat.x, current_odom_quat.y, current_odom_quat.z, current_odom_quat.w]
@@ -126,13 +126,13 @@ class ParticleFilter(Node):
 
         # Subtract from last saved odometry to get the change in odometry deltax
         odom_change = current_odom_info - self.last_odom_info
-        
+
         self.particles = self.motion_model.evaluate(self.particles, odom_change)
-        
-        
+
+
     def pose_callback(self, pose_msg):
         """
-        Initializes the particles 
+        Initializes the particles
 
         Args:
          - PoseWithCovarianceStamped : whatever pose we set in rviz
@@ -142,34 +142,34 @@ class ParticleFilter(Node):
 
         # initialize with the pose from the message
         pose = pose_msg.pose.pose
-        
+
         # get the rotation
         rotation_quat = pose.orientation
         rotation_quat_list = [rotation_quat.x, rotation_quat.y, rotation_quat.z, rotation_quat.w]
         _, _, theta = euler_from_quaternion(rotation_quat_list)
-        
+
         x, y = pose.position.x, pose.position.y
         self.particles = np.broadcast_to((x,y,theta), (self.num_particles, 3))
 
-        # add some noise to each of the poses 
+        # add some noise to each of the poses
         noise = np.random.normal(0,1.0, (self.num_particles,3))
-        self.particles = self.particles + noise 
-        
+        self.particles = self.particles + noise
+
         self.get_logger().info("Particles Initialized")
-    
+
     def visualize_particles(self, particles):
         """"
-        
+
         """
         self.particle_pub
 
     def update_average(self):
         """
-        Publishes the "average" pose of the particles when they are updated from either 
-        the sensor or motion model. 
+        Publishes the "average" pose of the particles when they are updated from either
+        the sensor or motion model.
         """
-        # need to define some notion of the average pose 
-        
+        # need to define some notion of the average pose
+
         radians = self.particles[:, 2]
         # Calculate the sum of sin and cos values
         sin_sum = sum([np.sin(rad) for rad in radians])
@@ -179,8 +179,32 @@ class ParticleFilter(Node):
         mean_rad = np.arctan2(sin_sum, cos_sum)
 
         # in simulation
-        mean_positions = np.mean(self.particles[:, :2], axis=1)
-        
+        mean_x, mean_y, _ = np.mean(self.particles[:, :2], axis=1)
+
+        # send out the new messages
+        average_pose_estimate = self.create_transform_message(mean_x, mean_y, mean_rad)
+        self.odom_pub.publish(average_pose_estimate)
+
+    def create_transform_message(self, x_pos, y_pos, theta):
+        t = TransformStamped()
+
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = 'map'
+        t.child_frame_id = self.base_link_frame
+
+        t.transform.translation.x = x_pos
+        t.transform.translation.y = y_pos
+        t.transform.translation.z = 0
+
+        x, y, z, w = tf.transformations.quaternion_from_euler
+
+        t.transform.rotation.x = x
+        t.transform.rotation.y = y
+        t.transform.rotation.z = z
+        t.transform.rotation.w = w
+
+        return t
+
 
 def main(args=None):
     rclpy.init(args=args)
