@@ -61,6 +61,9 @@ class SensorModel:
         # Subscribe to the map
         self.map = None
         self.map_set = False
+        self.map_origin = None
+        self.map_height = None
+        self.map_width = None
         self.map_subscriber = node.create_subscription(
             OccupancyGrid,
             self.map_topic,
@@ -185,15 +188,16 @@ class SensorModel:
         sampled_particles = particles[indices]
 
         # blur the particles after resampling with some gaussian noise
-        noise_x = np.random.normal(loc=0.0, scale = 1.0, size = n)
-        noise_y = np.random.normal(loc=0.0, scale = 1.0, size = n)
-        noise_z = np.random.normal(loc=0.0, scale = 1.0, size = n)
+        noise = rng.normal(loc=0.0, scale=1.0, size=(n, 3))
+        sampled_particles += noise
 
-        sampled_particles[:,0] = sampled_particles[:,0] + noise_x
-        sampled_particles[:,1] = sampled_particles[:,1] + noise_y
-        sampled_particles[:,2] = sampled_particles[:,2] + noise_z
-
-        #TODO: clip the particles after adding the noise
+        if self.map_set and self.map_origin is not None and self.map_height is not None and self.map_width is not None:
+            origin_x, origin_y, _ = self.map_origin
+            max_x = np.nextafter(origin_x + self.map_width * self.resolution, origin_x)
+            max_y = np.nextafter(origin_y + self.map_height * self.resolution, origin_y)
+            np.clip(sampled_particles[:, 0], origin_x, max_x, out=sampled_particles[:, 0])
+            np.clip(sampled_particles[:, 1], origin_y, max_y, out=sampled_particles[:, 1])
+        sampled_particles[:, 2] = (sampled_particles[:, 2] + np.pi) % (2.0 * np.pi) - np.pi
 
         return sampled_particles
 
@@ -212,6 +216,9 @@ class SensorModel:
         yaw = R.from_quat(quat).as_euler("xyz")[2]
 
         origin = (origin_p.x, origin_p.y, yaw)
+        self.map_origin = origin
+        self.map_height = map_msg.info.height
+        self.map_width = map_msg.info.width
 
         # Initialize a map with the laser scan
         self.scan_sim.set_map(
