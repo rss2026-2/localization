@@ -140,7 +140,7 @@ class ParticleFilter(Node):
 
         self.particles = self.motion_model.evaluate(self.particles, odom_change)
 
-        self.last_odom = current_odom
+        self.last_odom = current_odom_info
 
 
     def pose_callback(self, pose_msg):
