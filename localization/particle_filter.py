@@ -115,6 +115,8 @@ class ParticleFilter(Node):
 
         self.num_particles = self.get_parameter("num_particles").value # number of particles we are using
 
+        self.last_odom_info = None
+
         self.get_logger().info("=============+READY+=============")
 
         # Implement the MCL algorithm
@@ -161,8 +163,13 @@ class ParticleFilter(Node):
 
         current_odom_info = np.array([current_odom_pose.position.x, current_odom_pose.position.y, current_odom_yaw])
 
+        if self.last_odom_info is None:
+            self.last_odom_info = current_odom_info
+            return
+
         # Subtract from last saved odometry to get the change in odometry deltax
         odom_change = current_odom_info - self.last_odom_info
+        self.last_odom_info = current_odom_info
 
         self.particles = self.motion_model.evaluate(self.particles, odom_change)
 
