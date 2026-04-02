@@ -150,6 +150,8 @@ class ParticleFilter(Node):
         Args:
          - PoseWithCovarianceStamped : whatever pose we set in rviz
         """
+        if self.particles is None:
+            return
         # initializing the particles
          #number of particles
 
@@ -177,7 +179,8 @@ class ParticleFilter(Node):
         the sensor or motion model.
         """
         # need to define some notion of the average pose
-
+        if self.particles is None:
+            return 
         radians = self.particles[:, 2]
         # Calculate the sum of sin and cos values
         sin_sum = sum([np.sin(rad) for rad in radians])
