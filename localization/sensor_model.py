@@ -143,17 +143,31 @@ class SensorModel:
 
         scans = self.scan_sim.scan(particles)
 
+        # Ensure the observation vector matches the number of simulated beams.
+        # `scans` is typically shaped (N, num_beams_per_particle).
+        obs = np.asarray(observation, dtype=float).reshape(-1)
+        num_beams = scans.shape[1] if scans.ndim == 2 else obs.size
+        if obs.size != num_beams:
+            # Pick evenly spaced beams across the incoming scan.
+            # This makes the sensor model robust to different lidar resolutions.
+            idx = np.linspace(0, max(obs.size - 1, 0), num_beams).astype(int)
+            obs = obs[idx]
+
         # convert lidar observations and ray tracing scans from meters to pixels
         scans /= self.resolution * self.lidar_scale_to_map_scale # where is map_resolution defined?
-        obs = np.copy(observation)
         obs /= self.resolution * self.lidar_scale_to_map_scale
+
+        # Handle NaN/Inf ranges (common in LaserScan).
+        obs = np.nan_to_num(obs, nan=self.table_width - 1, posinf=self.table_width - 1, neginf=0.0)
 
         # clip to min and max distances
         scans = np.clip(scans, 0, self.table_width-1).astype(int)
         obs = np.clip(obs, 0, self.table_width-1).astype(int)
 
         # assign normalized, culmulative sum weights to each particle, combine beam weights
-        weights = self.sensor_model_table[obs,scans]
+        if scans.ndim == 2 and obs.ndim == 1:
+            obs = np.broadcast_to(obs, scans.shape)
+        weights = self.sensor_model_table[obs, scans]
         weights = np.prod(weights, axis=1)
 
         return weights

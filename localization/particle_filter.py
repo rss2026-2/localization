@@ -110,7 +110,9 @@ class ParticleFilter(Node):
             return
         observation = laser_msg.ranges
         weights = self.sensor_model.evaluate(self.particles, observation)
-        self.particles = self.sensor_model.resample(self.particles,weights)
+        if weights is None:
+            return
+        self.particles = self.sensor_model.resample(self.particles, weights)
         self.update_average()
 
     def odom_callback(self, odometry_msg):
