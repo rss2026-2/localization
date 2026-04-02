@@ -9,13 +9,50 @@ import rclpy
 
 assert rclpy
 
-# added
-from tf_transformations import euler_from_quaternion, quaternion_from_euler
+import math
 import numpy as np
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs_py import point_cloud2
 from std_msgs.msg import Header
 from geometry_msgs.msg import TransformStamped
+
+def euler_from_quaternion(quat_xyzw):
+    x, y, z, w = quat_xyzw
+
+    # roll (x-axis rotation)
+    sinr_cosp = 2.0 * (w * x + y * z)
+    cosr_cosp = 1.0 - 2.0 * (x * x + y * y)
+    roll = math.atan2(sinr_cosp, cosr_cosp)
+
+    # pitch (y-axis rotation)
+    sinp = 2.0 * (w * y - z * x)
+    if abs(sinp) >= 1.0:
+        pitch = math.copysign(math.pi / 2.0, sinp)
+    else:
+        pitch = math.asin(sinp)
+
+    # yaw (z-axis rotation)
+    siny_cosp = 2.0 * (w * z + x * y)
+    cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
+    yaw = math.atan2(siny_cosp, cosy_cosp)
+
+    return roll, pitch, yaw
+
+
+def quaternion_from_euler(roll, pitch, yaw):
+    cr = math.cos(roll * 0.5)
+    sr = math.sin(roll * 0.5)
+    cp = math.cos(pitch * 0.5)
+    sp = math.sin(pitch * 0.5)
+    cy = math.cos(yaw * 0.5)
+    sy = math.sin(yaw * 0.5)
+
+    w = cr * cp * cy + sr * sp * sy
+    x = sr * cp * cy - cr * sp * sy
+    y = cr * sp * cy + sr * cp * sy
+    z = cr * cp * sy - sr * sp * cy
+
+    return x, y, z, w
 
 class ParticleFilter(Node):
 
@@ -190,7 +227,7 @@ class ParticleFilter(Node):
         t.transform.translation.y = y_pos
         t.transform.translation.z = 0
 
-        x, y, z, w = tf.transformations.quaternion_from_euler
+        x, y, z, w = quaternion_from_euler(0.0, 0.0, theta)
 
         t.transform.rotation.x = x
         t.transform.rotation.y = y
