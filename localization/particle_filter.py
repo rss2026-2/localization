@@ -90,9 +90,10 @@ class ParticleFilter(Node):
         # Publish a transformation frame between the map
         # and the particle_filter_frame.
 
-        self.last_odom_info  = np.array([0, 0, 0])
+        self.last_odom_info = None
 
-        self.particles = None
+        # Initialize particles to a default pose so callbacks don't crash before /initialpose.
+        self.particles = np.zeros((self.num_particles, 3), dtype=float)
 
 
 
@@ -135,8 +136,13 @@ class ParticleFilter(Node):
 
         current_odom_info = np.array([current_odom_pose.position.x, current_odom_pose.position.y, current_odom_yaw])
 
+        if self.last_odom_info is None:
+            self.last_odom_info = current_odom_info
+            return
+
         # Subtract from last saved odometry to get the change in odometry deltax
         odom_change = current_odom_info - self.last_odom_info
+        self.last_odom_info = current_odom_info
 
         self.particles = self.motion_model.evaluate(self.particles, odom_change)
 
@@ -150,8 +156,6 @@ class ParticleFilter(Node):
         Args:
          - PoseWithCovarianceStamped : whatever pose we set in rviz
         """
-        if self.particles is None:
-            return
         # initializing the particles
          #number of particles
 
@@ -179,8 +183,6 @@ class ParticleFilter(Node):
         the sensor or motion model.
         """
         # need to define some notion of the average pose
-        if self.particles is None:
-            return 
         radians = self.particles[:, 2]
         # Calculate the sum of sin and cos values
         sin_sum = sum([np.sin(rad) for rad in radians])
@@ -190,31 +192,31 @@ class ParticleFilter(Node):
         mean_rad = np.arctan2(sin_sum, cos_sum)
 
         # in simulation
-        mean_x, mean_y, _ = np.mean(self.particles[:, :2], axis=1)
+        mean_x, mean_y = np.mean(self.particles[:, :2], axis=0)
 
         # send out the new messages
-        average_pose_estimate = self.create_transform_message(mean_x, mean_y, mean_rad)
+        average_pose_estimate = self.create_odom_message(mean_x, mean_y, mean_rad)
         self.odom_pub.publish(average_pose_estimate)
 
-    def create_transform_message(self, x_pos, y_pos, theta):
-        t = TransformStamped()
+    def create_odom_message(self, x_pos, y_pos, theta):
+        msg = Odometry()
 
-        t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = 'map'
-        t.child_frame_id = self.base_link_frame
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = "map"
+        msg.child_frame_id = self.base_link_frame
 
-        t.transform.translation.x = x_pos
-        t.transform.translation.y = y_pos
-        t.transform.translation.z = 0
+        msg.pose.pose.position.x = float(x_pos)
+        msg.pose.pose.position.y = float(y_pos)
+        msg.pose.pose.position.z = 0.0
 
         x, y, z, w = R.from_euler('z', theta).as_quat()
 
-        t.transform.rotation.x = x
-        t.transform.rotation.y = y
-        t.transform.rotation.z = z
-        t.transform.rotation.w = w
+        msg.pose.pose.orientation.x = float(x)
+        msg.pose.pose.orientation.y = float(y)
+        msg.pose.pose.orientation.z = float(z)
+        msg.pose.pose.orientation.w = float(w)
 
-        return t
+        return msg
 
     def visualize_particles(self, particles):
         """
