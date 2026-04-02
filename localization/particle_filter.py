@@ -160,7 +160,7 @@ class ParticleFilter(Node):
         rotation_quat = pose.orientation
         rotation_quat_list = [rotation_quat.x, rotation_quat.y, rotation_quat.z, rotation_quat.w]
 
-        theta = R.from_quat(quat_list).as_euler('xyz')[2]
+        theta = R.from_quat(rotation_quat_list).as_euler('xyz')[2]
 
         x, y = pose.position.x, pose.position.y
         self.particles = np.broadcast_to((x,y,theta), (self.num_particles, 3))
