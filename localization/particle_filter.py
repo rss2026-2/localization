@@ -115,6 +115,9 @@ class ParticleFilter(Node):
 
         self.num_particles = self.get_parameter("num_particles").value # number of particles we are using
 
+        # Initialize particles to a default pose so callbacks don't crash before /initialpose.
+        self.particles = np.zeros((self.num_particles, 3), dtype=float)
+
         self.last_odom_info = None
 
         self.get_logger().info("=============+READY+=============")
