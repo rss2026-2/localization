@@ -90,7 +90,7 @@ class ParticleFilter(Node):
         # Publish a transformation frame between the map
         # and the particle_filter_frame.
 
-        self.last_odom_info = None
+        self.last_odom_stamp = None
 
         # Initialize particles to a default pose so callbacks don't crash before /initialpose.
         self.particles = np.zeros((self.num_particles, 3), dtype=float)
@@ -124,31 +124,27 @@ class ParticleFilter(Node):
         """
         if self.particles is None:
             return
-        # Get the current xyz position of the robot
-        current_odom_pose = odometry_msg.pose.pose
 
-        # Get the rotation (yaw from the euler angles)
-        current_odom_quat = current_odom_pose.orientation
-        current_odom_quat_list = [current_odom_quat.x, current_odom_quat.y, current_odom_quat.z, current_odom_quat.w]
+        # Per the lab spec, odom pose may be unset; use twist + dt instead.
+        stamp = odometry_msg.header.stamp
+        now_sec = float(stamp.sec) + float(stamp.nanosec) * 1e-9
 
-        # get it in euler
-        r = R.from_quat(current_odom_quat_list)
-        current_odom_yaw = r.as_euler('xyz')[2]
-
-
-        current_odom_info = np.array([current_odom_pose.position.x, current_odom_pose.position.y, current_odom_yaw])
-
-        if self.last_odom_info is None:
-            self.last_odom_info = current_odom_info
+        if self.last_odom_stamp is None:
+            self.last_odom_stamp = now_sec
             return
 
-        # Subtract from last saved odometry to get the change in odometry deltax
-        odom_change = current_odom_info - self.last_odom_info
-        self.last_odom_info = current_odom_info
+        dt = now_sec - self.last_odom_stamp
+        self.last_odom_stamp = now_sec
+        if dt <= 0.0:
+            return
+
+        vx = float(odometry_msg.twist.twist.linear.x)
+        vy = float(odometry_msg.twist.twist.linear.y)
+        wz = float(odometry_msg.twist.twist.angular.z)
+        odom_change = np.array([vx * dt, vy * dt, wz * dt], dtype=float)
 
         self.particles = self.motion_model.evaluate(self.particles, odom_change)
-
-        self.last_odom = current_odom_info
+        self.update_average()
 
 
     def pose_callback(self, pose_msg):
