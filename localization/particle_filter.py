@@ -11,7 +11,7 @@ assert rclpy
 
 import math
 import numpy as np
-from sensor_msgs.msg import PointCloud2
+from sensor_msgs.msg import PointCloud2, LaserScan
 from sensor_msgs_py import point_cloud2
 from std_msgs.msg import Header
 from geometry_msgs.msg import TransformStamped
@@ -190,9 +190,9 @@ class ParticleFilter(Node):
 
         # add some noise to each of the poses
         noise = np.random.normal(0,1.0, (self.num_particles,3))
-        self.particles = self.particles + noise 
-        
-        self.get_logger().info("Particles Initialized")    
+        self.particles = self.particles + noise
+
+        self.get_logger().info("Particles Initialized")
 
     def update_average(self):
         """
@@ -235,14 +235,14 @@ class ParticleFilter(Node):
         t.transform.rotation.w = w
 
         return t
-        
+
     def visualize_particles(self, particles):
         """
         Visualize the particles to rviz
         """
         # Get the positions and hard code z to be 0
         positions_3d = np.column_stack(particles[:, :2], np.zeros(particles.shape[0]))
-        
+
         header = Header()
         header.stamp = self.get_clock().now().to_msg()
         header.frame_id = 'base_link'
