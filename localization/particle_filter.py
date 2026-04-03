@@ -90,7 +90,8 @@ class ParticleFilter(Node):
         # Publish a transformation frame between the map
         # and the particle_filter_frame.
 
-        self.last_odom_stamp = None
+        self.last_odom_time_ns = None
+        self.last_odom_pose = None  # (x, y, yaw) in odom frame
 
         # Initialize particles to a default pose so callbacks don't crash before /initialpose.
         self.particles = np.zeros((self.num_particles, 3), dtype=float)
@@ -125,23 +126,61 @@ class ParticleFilter(Node):
         if self.particles is None:
             return
 
-        # Per the lab spec, odom pose may be unset; use twist + dt instead.
-        stamp = odometry_msg.header.stamp
-        now_sec = float(stamp.sec) + float(stamp.nanosec) * 1e-9
+        def wrap_angle(rad):
+            return (rad + np.pi) % (2.0 * np.pi) - np.pi
 
-        if self.last_odom_stamp is None:
-            self.last_odom_stamp = now_sec
+        # Prefer message time when valid; fall back to node clock (some drivers publish stamp=0).
+        stamp = odometry_msg.header.stamp
+        msg_time_ns = int(stamp.sec) * 1_000_000_000 + int(stamp.nanosec)
+        if msg_time_ns == 0:
+            msg_time_ns = int(self.get_clock().now().nanoseconds)
+
+        if self.last_odom_time_ns is None:
+            self.last_odom_time_ns = msg_time_ns
+            # Seed pose fallback for next callback.
+            p = odometry_msg.pose.pose.position
+            q = odometry_msg.pose.pose.orientation
+            yaw = R.from_quat([q.x, q.y, q.z, q.w]).as_euler("xyz")[2]
+            self.last_odom_pose = (float(p.x), float(p.y), float(yaw))
             return
 
-        dt = now_sec - self.last_odom_stamp
-        self.last_odom_stamp = now_sec
+        dt = (msg_time_ns - self.last_odom_time_ns) * 1e-9
+        self.last_odom_time_ns = msg_time_ns
         if dt <= 0.0:
             return
 
         vx = float(odometry_msg.twist.twist.linear.x)
         vy = float(odometry_msg.twist.twist.linear.y)
         wz = float(odometry_msg.twist.twist.angular.z)
-        odom_change = np.array([vx * dt, vy * dt, wz * dt], dtype=float)
+        twist_norm = abs(vx) + abs(vy) + abs(wz)
+
+        odom_change = None
+
+        # Primary: integrate twist in the robot frame.
+        if twist_norm > 1e-6:
+            odom_change = np.array([vx * dt, vy * dt, wz * dt], dtype=float)
+
+        # Fallback: derive body-frame delta from pose differences if twist is zero/unreliable.
+        p = odometry_msg.pose.pose.position
+        q = odometry_msg.pose.pose.orientation
+        yaw = float(R.from_quat([q.x, q.y, q.z, q.w]).as_euler("xyz")[2])
+        if self.last_odom_pose is not None:
+            last_x, last_y, last_yaw = self.last_odom_pose
+            global_dxy = np.array([float(p.x) - last_x, float(p.y) - last_y], dtype=float)
+            # Rotate global delta into the robot frame at the previous timestep.
+            c = np.cos(-last_yaw)
+            s = np.sin(-last_yaw)
+            body_dx = c * global_dxy[0] - s * global_dxy[1]
+            body_dy = s * global_dxy[0] + c * global_dxy[1]
+            dtheta = wrap_angle(yaw - last_yaw)
+            pose_change = np.array([body_dx, body_dy, dtheta], dtype=float)
+            if odom_change is None and (abs(body_dx) + abs(body_dy) + abs(dtheta)) > 1e-9:
+                odom_change = pose_change
+
+        self.last_odom_pose = (float(p.x), float(p.y), float(yaw))
+
+        if odom_change is None:
+            return
 
         self.particles = self.motion_model.evaluate(self.particles, odom_change)
         self.update_average()
