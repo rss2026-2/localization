@@ -229,6 +229,9 @@ class ParticleFilter(Node):
 
         :param particles: a Nx3 array of all particles storing [x,y,theta]
         """
+        if self.particles is None:
+            return
+        
         msg = PoseArray()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = 'map'
