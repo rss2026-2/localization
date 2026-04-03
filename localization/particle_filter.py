@@ -35,12 +35,10 @@ class ParticleFilter(Node):
 
         self.declare_parameter('odom_topic', "/odom")
         self.declare_parameter('scan_topic', "/scan")
-        self.declare_parameter('base_link_frame', "base_link_pf") # change to base_link for testing on car
         self.declare_parameter('num_particles', 100)
 
         self.scan_topic = self.get_parameter("scan_topic").get_parameter_value().string_value
         self.odom_topic = self.get_parameter("odom_topic").get_parameter_value().string_value
-        self.base_link_frame = self.get_parameter("base_link_frame").get_parameter_value().string_value # added
 
         self.laser_sub = self.create_subscription(LaserScan, self.scan_topic,
                                                   self.laser_callback,
@@ -208,7 +206,7 @@ class ParticleFilter(Node):
 
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = "map"
-        msg.child_frame_id = self.base_link_frame
+        msg.child_frame_id = self.particle_filter_frame
 
         msg.pose.pose.position.x = float(x_pos)
         msg.pose.pose.position.y = float(y_pos)
@@ -231,7 +229,7 @@ class ParticleFilter(Node):
         """
         if self.particles is None:
             return
-        
+
         msg = PoseArray()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = 'map'
