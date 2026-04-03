@@ -183,6 +183,8 @@ class ParticleFilter(Node):
         Publishes the "average" pose of the particles when they are updated from either
         the sensor or motion model.
         """
+        if self.particles is None:
+            return
         self.updates += 1
         self.get_logger().info(f"number of update calls: {self.updates}")
         # need to define some notion of the average pose
@@ -276,7 +278,7 @@ class ParticleFilter(Node):
         # blur the particles after resampling with some gaussian noise
         noise = rng.normal(loc=0.0, scale=[0.05, 0.05, 0.02], size=(n, 3))
         sampled_particles += noise
-        
+
         sampled_particles[:, 2] = (sampled_particles[:, 2] + np.pi) % (2.0 * np.pi) - np.pi
 
         return sampled_particles
