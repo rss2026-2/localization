@@ -2,7 +2,7 @@ from localization.sensor_model import SensorModel
 from localization.motion_model import MotionModel
 
 from nav_msgs.msg import Odometry
-from geometry_msgs.msg import PoseWithCovarianceStamped
+from geometry_msgs.msg import PoseWithCovarianceStamped, PoseArray, Pose
 
 from rclpy.node import Node
 import rclpy
@@ -70,7 +70,7 @@ class ParticleFilter(Node):
         self.odom_pub = self.create_publisher(Odometry, "/pf/pose/odom", 1)
 
         # added
-        self.particle_pub = self.create_publisher(PointCloud2, "/particles", 1)
+        self.particle_pub = self.create_publisher(PoseArray, "/particles", 1)
 
         # Initialize the models
         self.motion_model = MotionModel(self)
@@ -114,6 +114,7 @@ class ParticleFilter(Node):
             return
         self.particles = self.sensor_model.resample(self.particles, weights)
         self.update_average()
+        self.visualize_particles(self.particles)
 
     def odom_callback(self, odometry_msg):
         """
@@ -148,7 +149,8 @@ class ParticleFilter(Node):
 
         self.particles = self.motion_model.evaluate(self.particles, odom_change)
 
-        self.last_odom = current_odom_info
+        self.last_odom_info = current_odom_info
+        self.update_average()
 
 
     def pose_callback(self, pose_msg):
@@ -171,10 +173,10 @@ class ParticleFilter(Node):
         theta = R.from_quat(rotation_quat_list).as_euler('xyz')[2]
 
         x, y = pose.position.x, pose.position.y
-        self.particles = np.broadcast_to((x,y,theta), (self.num_particles, 3))
 
-        # add some noise to each of the poses
-        noise = np.random.normal(0,1.0, (self.num_particles,3))
+        self.particles = np.tile([x, y, theta], (self.num_particles, 1))
+        # add some noise to the poses
+        noise = np.random.normal(0, 0.5, (self.num_particles, 3))
         self.particles = self.particles + noise
 
         self.get_logger().info("Particles Initialized")
@@ -222,18 +224,26 @@ class ParticleFilter(Node):
 
     def visualize_particles(self, particles):
         """
-        Visualize the particles to rviz
+        Visualizes all the particles as PoseArray messages
+
+        :param particles: a Nx3 array of all particles storing [x,y,theta]
         """
-        # Get the positions and hard code z to be 0
-        positions_3d = np.column_stack(particles[:, :2], np.zeros(particles.shape[0]))
+        msg = PoseArray()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = 'map'
 
-        header = Header()
-        header.stamp = self.get_clock().now().to_msg()
-        header.frame_id = 'base_link'
-
-        pc2_msg = point_cloud2.create_cloud_xyz32(header, positions_3d)
-
-        self.particle_pub.publish(pc2_msg)
+        for x, y, theta in particles:
+            pose = Pose()
+            pose.position.x = float(x)
+            pose.position.y = float(y)
+            pose.position.z = 0.0
+            qx, qy, qz, qw = R.from_euler('z', theta).as_quat()
+            pose.orientation.x = float(qx)
+            pose.orientation.y = float(qy)
+            pose.orientation.z = float(qz)
+            pose.orientation.w = float(qw)
+            msg.poses.append(pose)
+        self.particle_pub.publish(msg)
 
 def main(args=None):
     rclpy.init(args=args)

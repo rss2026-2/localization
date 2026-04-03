@@ -137,6 +137,7 @@ class SensorModel:
         """
 
         if not self.map_set:
+            self.get_logger().info('ERROR: Map has not been set yet. Protected against this error by returning before evaluate.')
             return
 
         ####################################
@@ -202,7 +203,7 @@ class SensorModel:
         sampled_particles = particles[indices]
 
         # blur the particles after resampling with some gaussian noise
-        noise = rng.normal(loc=0.0, scale=1.0, size=(n, 3))
+        noise = rng.normal(loc=0.0, scale=[0.05, 0.05, 0.02], size=(n, 3))
         sampled_particles += noise
 
         if self.map_set and self.map_origin is not None and self.map_height is not None and self.map_width is not None:
