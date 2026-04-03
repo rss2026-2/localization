@@ -94,10 +94,7 @@ class ParticleFilter(Node):
 
         # Initialize particles to a default pose so callbacks don't crash before /initialpose.
         self.particles = np.zeros((self.num_particles, 3), dtype=float)
-
-
-
-
+        self.updates = 0
 
     def laser_callback(self, laser_msg):
         """
@@ -110,9 +107,9 @@ class ParticleFilter(Node):
             return
         observation = laser_msg.ranges
         weights = self.sensor_model.evaluate(self.particles, observation)
-        if weights is None:
-            return
-        self.particles = self.sensor_model.resample(self.particles, weights)
+        # if weights is None:
+        #     return
+        self.particles = self.resample(self.particles, weights)
         self.update_average()
         self.visualize_particles(self.particles)
 
@@ -178,7 +175,7 @@ class ParticleFilter(Node):
         # add some noise to the poses
         noise = np.random.normal(0, 0.5, (self.num_particles, 3))
         self.particles = self.particles + noise
-
+        self.update_average()
         self.get_logger().info("Particles Initialized")
 
     def update_average(self):
@@ -186,6 +183,8 @@ class ParticleFilter(Node):
         Publishes the "average" pose of the particles when they are updated from either
         the sensor or motion model.
         """
+        self.updates += 1
+        self.get_logger().info(f"number of update calls: {self.updates}")
         # need to define some notion of the average pose
         radians = self.particles[:, 2]
         # Calculate the sum of sin and cos values
@@ -244,6 +243,43 @@ class ParticleFilter(Node):
             pose.orientation.w = float(qw)
             msg.poses.append(pose)
         self.particle_pub.publish(msg)
+
+    def resample(self, particles, weights):
+        """
+        Resamples the particles given the probability of each particle occuring.
+        Applies some small noise to prevent states collapsing. Returns the a Nx3 array of new particles.
+
+        :param particles: An Nx3 matrix of the form:
+            [x0 y0 theta0]
+            [x1 y0 theta1]
+            [    ...     ]
+        :param weights: An Nx1 vector that stores the probability of each particle occuring.
+        """
+        if weights is None:
+            print("Could not resample nodes because weights were missing.")
+            return
+
+        weights = weights/sum(weights)
+        weights = np.cumsum(weights)
+
+        # resample the particles proportional to their weights
+        # here i'm using low variance sampling. read about it here: https://robotics.stackexchange.com/questions/16093/why-does-the-low-variance-resampling-algorithm-for-particle-filters-work#:~:text=Imagine%20laying%20out%20a%20yardstick,many%20offspring%20the%20parents%20produce.
+        rng = np.random.default_rng()
+        n = len(particles)
+        random = rng.uniform(low=0,high=1/n)
+        vals = np.arange(1, n + 1)
+        pointers = random + (vals - 1)/n
+        pointers = np.clip(pointers,0,1)
+        indices = np.searchsorted(weights,pointers,side="left")
+        sampled_particles = particles[indices]
+
+        # blur the particles after resampling with some gaussian noise
+        noise = rng.normal(loc=0.0, scale=[0.05, 0.05, 0.02], size=(n, 3))
+        sampled_particles += noise
+        
+        sampled_particles[:, 2] = (sampled_particles[:, 2] + np.pi) % (2.0 * np.pi) - np.pi
+
+        return sampled_particles
 
 def main(args=None):
     rclpy.init(args=args)

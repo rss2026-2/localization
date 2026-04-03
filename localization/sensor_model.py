@@ -137,7 +137,7 @@ class SensorModel:
         """
 
         if not self.map_set:
-            self.get_logger().info('ERROR: Map has not been set yet. Protected against this error by returning before evaluate.')
+            print('ERROR: Map has not been set yet. Protected against this error by returning before evaluate.')
             return
 
         ####################################
@@ -173,48 +173,6 @@ class SensorModel:
 
         return weights
         ####################################
-
-    def resample(self, particles, weights):
-        """
-        Resamples the particles given the probability of each particle occuring.
-        Applies some small noise to prevent states collapsing. Returns the a Nx3 array of new particles.
-
-        :param particles: An Nx3 matrix of the form:
-            [x0 y0 theta0]
-            [x1 y0 theta1]
-            [    ...     ]
-        :param weights: An Nx1 vector that stores the probability of each particle occuring.
-        """
-        if weights is None:
-            return
-
-        weights = weights/sum(weights)
-        weights = np.cumsum(weights)
-
-        # resample the particles proportional to their weights
-        # here i'm using low variance sampling. read about it here: https://robotics.stackexchange.com/questions/16093/why-does-the-low-variance-resampling-algorithm-for-particle-filters-work#:~:text=Imagine%20laying%20out%20a%20yardstick,many%20offspring%20the%20parents%20produce.
-        rng = np.random.default_rng()
-        n = len(particles)
-        random = rng.uniform(low=0,high=1/n)
-        vals = np.arange(1, n + 1)
-        pointers = random + (vals - 1)/n
-        pointers = np.clip(pointers,0,1)
-        indices = np.searchsorted(weights,pointers,side="left")
-        sampled_particles = particles[indices]
-
-        # blur the particles after resampling with some gaussian noise
-        noise = rng.normal(loc=0.0, scale=[0.05, 0.05, 0.02], size=(n, 3))
-        sampled_particles += noise
-
-        if self.map_set and self.map_origin is not None and self.map_height is not None and self.map_width is not None:
-            origin_x, origin_y, _ = self.map_origin
-            max_x = np.nextafter(origin_x + self.map_width * self.resolution, origin_x)
-            max_y = np.nextafter(origin_y + self.map_height * self.resolution, origin_y)
-            np.clip(sampled_particles[:, 0], origin_x, max_x, out=sampled_particles[:, 0])
-            np.clip(sampled_particles[:, 1], origin_y, max_y, out=sampled_particles[:, 1])
-        sampled_particles[:, 2] = (sampled_particles[:, 2] + np.pi) % (2.0 * np.pi) - np.pi
-
-        return sampled_particles
 
     def map_callback(self, map_msg):
         # Convert the map to a numpy array
