@@ -10,7 +10,7 @@ particle_filter:
 
     # The field of view centered around theta=0
     scan_field_of_view: 4.71 # radians
-    
+
     # angle stride for downsampling the lidar data
     angle_step: 11
 
@@ -20,7 +20,7 @@ particle_filter:
     # The names of topics to listen and publish to
     map_topic: "/map"
     scan_topic: "/scan"
-    odom_topic: "/vesc/odom"
+    odom_topic: "/odom"
 
     # The frame you should publish your transform to
     particle_filter_frame: "/base_link"

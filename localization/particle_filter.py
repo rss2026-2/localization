@@ -109,7 +109,6 @@ class ParticleFilter(Node):
         #     return
         self.particles = self.resample(self.particles, weights)
         self.update_average()
-        self.visualize_particles(self.particles)
 
     def odom_callback(self, odometry_msg):
         """
@@ -183,8 +182,7 @@ class ParticleFilter(Node):
         """
         if self.particles is None:
             return
-        self.updates += 1
-        self.get_logger().info(f"number of update calls: {self.updates}")
+        self.visualize_particles()
         # need to define some notion of the average pose
         radians = self.particles[:, 2]
         # Calculate the sum of sin and cos values
@@ -221,7 +219,7 @@ class ParticleFilter(Node):
 
         return msg
 
-    def visualize_particles(self, particles):
+    def visualize_particles(self):
         """
         Visualizes all the particles as PoseArray messages
 
@@ -234,7 +232,7 @@ class ParticleFilter(Node):
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = 'map'
 
-        for x, y, theta in particles:
+        for x, y, theta in self.particles:
             pose = Pose()
             pose.position.x = float(x)
             pose.position.y = float(y)
