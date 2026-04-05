@@ -122,29 +122,29 @@ class ParticleFilter(Node):
         """
         if self.particles is None:
             return
-        
+
         # Get the current time
-        current_time = self.get_clock.now()
-        
+        current_time = self.get_clock().now()
+
         # Get the change in time from previous to current call to this function
         dt = (current_time - self.last_time).nanosec * 1e-9
-        
+
         # Get the twist of the robot
         current_odom_twist = odometry_msg.twist.twist
-        x_change = dt * current_odom_twist.linear.x 
+        x_change = dt * current_odom_twist.linear.x
         y_change = dt * current_odom_twist.linear.y
         theta_change = dt * current_odom_twist.angular.z
-        
+
         # Synthesize the odometry change
         odom_change = np.array([x_change, y_change, theta_change])
-        
+
         # Evaluate on the motion model
         self.particles = self.motion_model.evaluate(self.particles, odom_change)
-        
+
         # Set last time to current time
         self.last_time = current_time
-        self.update_average()        
-        
+        self.update_average()
+
         # # Get the current xyz position of the robot
         # current_odom_pose = odometry_msg.pose.pose
 
@@ -170,7 +170,7 @@ class ParticleFilter(Node):
         # self.particles = self.motion_model.evaluate(self.particles, odom_change)
 
         # self.last_odom_info = current_odom_info
-        
+
         # self.last_time = current_time
         # self.update_average()
 
