@@ -91,7 +91,7 @@ class ParticleFilter(Node):
 
         # added:
         self.last_odom_info = None
-        self.last_time = self.get_clock().now().to_msg().nanosec
+        self.last_time = self.get_clock().now().nanoseconds
 
         # Initialize particles to a default pose so callbacks don't crash before /initialpose.
         self.particles = np.zeros((self.num_particles, 3), dtype=float)
@@ -124,7 +124,7 @@ class ParticleFilter(Node):
             return
 
         # Get the current time
-        current_time = self.get_clock().now().nanosec
+        current_time = self.get_clock().now().nanoseconds
 
         # Get the change in time from previous to current call to this function
         dt = (current_time - self.last_time) * 1e-9
