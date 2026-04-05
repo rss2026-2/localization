@@ -91,6 +91,7 @@ class ParticleFilter(Node):
 
         # added:
         self.last_odom_info = None
+        self.last_time = self.get_clock().now().to_msg()
 
         # Initialize particles to a default pose so callbacks don't crash before /initialpose.
         self.particles = np.zeros((self.num_particles, 3), dtype=float)
@@ -121,32 +122,57 @@ class ParticleFilter(Node):
         """
         if self.particles is None:
             return
-        # Get the current xyz position of the robot
-        current_odom_pose = odometry_msg.pose.pose
-
-        # Get the rotation (yaw from the euler angles)
-        current_odom_quat = current_odom_pose.orientation
-        current_odom_quat_list = [current_odom_quat.x, current_odom_quat.y, current_odom_quat.z, current_odom_quat.w]
-
-        # get it in euler
-        r = R.from_quat(current_odom_quat_list)
-        current_odom_yaw = r.as_euler('xyz')[2]
-
-
-        current_odom_info = np.array([current_odom_pose.position.x, current_odom_pose.position.y, current_odom_yaw])
-
-        if self.last_odom_info is None:
-            self.last_odom_info = current_odom_info
-            return
-
-        # Subtract from last saved odometry to get the change in odometry deltax
-        odom_change = current_odom_info - self.last_odom_info
-        self.last_odom_info = current_odom_info
-
+        
+        # Get the current time
+        current_time = self.get_clock.now()
+        
+        # Get the change in time from previous to current call to this function
+        dt = (current_time - self.last_time).nanosec * 1e-9
+        
+        # Get the twist of the robot
+        current_odom_twist = odometry_msg.twist.twist
+        x_change = dt * current_odom_twist.linear.x 
+        y_change = dt * current_odom_twist.linear.y
+        theta_change = dt * current_odom_twist.angular.z
+        
+        # Synthesize the odometry change
+        odom_change = np.array([x_change, y_change, theta_change])
+        
+        # Evaluate on the motion model
         self.particles = self.motion_model.evaluate(self.particles, odom_change)
+        
+        # Set last time to current time
+        self.last_time = current_time
+        self.update_average()        
+        
+        # # Get the current xyz position of the robot
+        # current_odom_pose = odometry_msg.pose.pose
 
-        self.last_odom_info = current_odom_info
-        self.update_average()
+        # # Get the rotation (yaw from the euler angles)
+        # current_odom_quat = current_odom_pose.orientation
+        # current_odom_quat_list = [current_odom_quat.x, current_odom_quat.y, current_odom_quat.z, current_odom_quat.w]
+
+        # # get it in euler
+        # r = R.from_quat(current_odom_quat_list)
+        # current_odom_yaw = r.as_euler('xyz')[2]
+
+
+        # current_odom_info = np.array([current_odom_pose.position.x, current_odom_pose.position.y, current_odom_yaw])
+
+        # if self.last_odom_info is None:
+        #     self.last_odom_info = current_odom_info
+        #     return
+
+        # # Subtract from last saved odometry to get the change in odometry deltax
+        # odom_change = current_odom_info - self.last_odom_info
+        # self.last_odom_info = current_odom_info
+
+        # self.particles = self.motion_model.evaluate(self.particles, odom_change)
+
+        # self.last_odom_info = current_odom_info
+        
+        # self.last_time = current_time
+        # self.update_average()
 
 
     def pose_callback(self, pose_msg):
