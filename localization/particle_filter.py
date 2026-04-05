@@ -74,6 +74,7 @@ class ParticleFilter(Node):
         self.motion_model = MotionModel(self)
         self.sensor_model = SensorModel(self)
 
+        # added
         self.num_particles = self.get_parameter("num_particles").value # number of particles we are using
 
         self.get_logger().info("=============+READY+=============")
@@ -88,6 +89,7 @@ class ParticleFilter(Node):
         # Publish a transformation frame between the map
         # and the particle_filter_frame.
 
+        # added:
         self.last_odom_info = None
 
         # Initialize particles to a default pose so callbacks don't crash before /initialpose.
