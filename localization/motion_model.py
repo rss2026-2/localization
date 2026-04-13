@@ -7,10 +7,24 @@ class MotionModel:
         # TODO
         # Do any precomputation for the motion
         # model here.
-
-        self.deterministic = False
-        self.translational_sigma = 1.0
-        self.rotational_sigma = 1.0
+        
+        # Pass in whether running model as deterministic
+        self.is_deterministic = node.is_deterministic
+        
+        # Define coefficients to control contribution of each parameter to each noise distribution corresponding to x,y,theta
+        self.a1 = 0.6 # Effect of position change on translational noise
+        self.a2 = 0.4 # Effect of orientation change on translational noise
+        self.a3 = 0.45 # Effect of position change on rotational noise
+        self.a4 = 1.2  # Effect of orientation change on rotational noise
+        
+        # Add a forward bias term to address particles appearing behind ground truth due to system latency in real-time runs
+        self.forward_bias = 1.10 if node.is_real_world else 1.00
+        
+        # Note: We have large noise coefficients because our racecar has significant drift when giving a forward command, 
+        # causing us to make a lot of micro-rotations to adjust, causing even more input noise into our odometry instead 
+        # of just us being able to drive straight and rely on accurate odometry. Therefore we inject more noise than usual
+        # to account for this error. We also add forward bias to account for system latency between where our car is and where
+        # we're receiving the msgs.
 
         ####################################
 
@@ -32,14 +46,6 @@ class MotionModel:
             particles: An updated matrix of the
                 same size
         """
-
-        ####################################
-        # Add noise depending of if the model is deterministic or not
-        if self.deterministic:
-            NOISE_PROP = 0.0
-        else:
-            NOISE_PROP = 0.1
-
         # Get each column of odometry
         x_delta = odometry[0]
         y_delta = odometry[1]
@@ -49,30 +55,53 @@ class MotionModel:
         x_old = particles[:, 0]
         y_old = particles[:, 1]
         theta_old = particles[:, 2]
+        
+        # Add noise if not deterministic
+        if not self.is_deterministic:
+            
+            x_delta = self.forward_bias * x_delta 
+            # Determine the standard deviation of the noise distribution for each of x, y, and theta
+            
+            # Compute standard deviations by adding variances and taking sqrt
+            x_std = np.sqrt(self.a1 * x_delta**2 + self.a2 * theta_delta**2)
+            y_std = np.sqrt(self.a1 * y_delta**2 + self.a2 * theta_delta**2) # y_delta close to 0 b.c. in local frame of robot
+            theta_std = np.sqrt(self.a3 * x_delta**2 + self.a4 * theta_delta**2) # effect of y_delta negligible 
+            
+            # Prevent errors if odometry is 0
+            x_std = max(0.001, x_std)
+            y_std = max(0.001, y_std)
+            theta_std = max(0.001, theta_std)
 
-        # Add noise proportional to the changes in x, y, and theta. Larger absolute values -> greater noise
+            # Generate noise by sampling from gaussian distributions using above computed stds
+            # Put them all in one rng.normal call for vectorization. Columns are [x noise, y noise, theta noise]
+            rng = np.random.default_rng()
+            noise = rng.normal(loc=0.0, scale=[x_std, y_std, theta_std], size=(len(particles), 3))
+            
+            # Apply noise to local odometry
+            x_delta = x_delta + noise[:,0]
+            y_delta = y_delta + noise[:,1]
+            theta_delta = theta_delta + noise[:,2]
+            
+        # Using theta_old assumes the car followed a straight path defined by theta_old's orientation, and then instantaneously
+        # turned to theta_new. A better estimate uses the average theta value the car would have following the path based on
+        # the start and end angles. The equation gets us the orientation halfway between where we started and where we ended.
+        theta_avg = theta_old + theta_delta / 2.0 
 
-        # Use formula to get new x values with noise added
-        # x_k = x_{k-1} + x_{delta} * cos(theta_{k-1}) - y_{delta} * sin(theta_{k-1})
-        rng = np.random.default_rng()
+        # Use formula to get new x values with noise added: x_k = x_{k-1} + x_{delta} * cos(theta_{k-1}) - y_{delta} * sin(theta_{k-1})
+        x_new = x_old + x_delta * np.cos(theta_avg) - y_delta * np.sin(theta_avg)
 
-        noise = rng.normal(loc=0.0, scale=[self.translational_sigma, self.translational_sigma, self.rotational_sigma], size=(len(particles), 3))
+        # Use formula to get new y values with noise added: y_k = x_{k-1} + x_{delta} * sin(theta_{k-1}) + y_{delta} * cos(theta_{k-1})
+        y_new = y_old + x_delta * np.sin(theta_avg) + y_delta * np.cos(theta_avg)
 
-        x_new = x_old + x_delta * np.cos(theta_old) - y_delta * np.sin(theta_old) + NOISE_PROP * (noise[:,0])
-
-        # Use formula to get new y values with noise added
-        # y_k = x_{k-1} + x_{delta} * sin(theta_{k-1}) + y_{delta} * cos(theta_{k-1})
-        y_new = y_old + x_delta * np.sin(theta_old) + y_delta * np.cos(theta_old) + NOISE_PROP * (noise[:,1])
-
-        # Use formula to get new theta values with noise added
-        # theta_k = theta_{k-1} + theta_{delta}
-        theta_new = theta_old + theta_delta + NOISE_PROP * (noise[:,2])
+        # Use formula to get new theta values with noise added: theta_k = theta_{k-1} + theta_{delta}
+        theta_new = theta_old + theta_delta
 
         # Concatenate the results
         x_new = np.expand_dims(x_new, axis=1)
         y_new = np.expand_dims(y_new, axis=1)
         xy = np.hstack((x_new, y_new))
         new_particles = np.column_stack((xy, theta_new))
+        # Normalize theta values between -pi and pi
         new_particles[:, 2] = (new_particles[:, 2] + np.pi) % (2.0 * np.pi) - np.pi
 
         return new_particles

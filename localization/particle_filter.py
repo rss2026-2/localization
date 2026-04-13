@@ -14,8 +14,11 @@ from scipy.spatial.transform import Rotation as R
 import numpy as np
 from sensor_msgs.msg import PointCloud2, LaserScan
 from sensor_msgs_py import point_cloud2
-from std_msgs.msg import Header
+from std_msgs.msg import Header, Float32
+from tf2_ros.buffer import Buffer
+from tf2_ros.transform_listener import TransformListener
 from geometry_msgs.msg import TransformStamped
+import numpy as np
 from std_msgs.msg import Float32
 
 
@@ -26,6 +29,16 @@ class ParticleFilter(Node):
 
         self.declare_parameter('particle_filter_frame', "default")
         self.particle_filter_frame = self.get_parameter('particle_filter_frame').get_parameter_value().string_value
+
+        self.declare_parameter('deterministic', False)
+        self.is_deterministic = self.get_parameter('deterministic').get_parameter_value().bool_value
+
+        self.declare_parameter('is_real_world', True)
+        self.is_real_world = self.get_parameter('is_real_world').get_parameter_value().bool_value
+
+        # Put sensor model on a timer
+        self.declare_parameter('timer_period', 1.5)
+        timer_period = self.get_parameter('timer_period').get_parameter_value().double_value
 
         #  *Important Note #1:* It is critical for your particle
         #     filter to obtain the following topic names from the
@@ -83,8 +96,6 @@ class ParticleFilter(Node):
         # added
         self.num_particles = self.get_parameter("num_particles").value # number of particles we are using
 
-        self.get_logger().info("=============+READY+=============")
-
         # Implement the MCL algorithm
         # using the sensor model and the motion model
         #
@@ -96,13 +107,45 @@ class ParticleFilter(Node):
         # and the particle_filter_frame.
 
         # added:
-        self.last_odom_info = None
-        self.last_time = self.get_clock().now().nanoseconds
+
+        # Add cte publishers
+        self.cte_pos_pub = self.create_publisher(Float32, "/cross_track_pos_error", 1)
+        self.cte_theta_pub = self.create_publisher(Float32, "/cross_track_theta_error", 1)
+
+        self.timer = self.create_timer(timer_period, self.timer_callback)
+
+        # Initialize tf buffer to transform base link to map
+        self.buffer = Buffer()
+        self.listener = TransformListener(self.buffer, self)
 
         # Initialize particles to a default pose so callbacks don't crash before /initialpose.
         self.particles = np.zeros((self.num_particles, 3), dtype=float)
         self.updates = 0
         self.thinking_times = []
+
+        # Initialize variables
+        self.last_odom_info = None
+        self.last_time = None
+        self.update_sensor = False
+
+
+        self.get_logger().info("=============+READY+=============")
+
+    def timer_callback(self):
+        # Flip update_sensor to true
+        self.update_sensor = True
+
+        # Initialize variables
+        self.last_odom_info = None
+        self.last_time = None
+        self.update_sensor = False
+
+
+        self.get_logger().info("=============+READY+=============")
+
+    def timer_callback(self):
+        # Flip update_sensor to true
+        self.update_sensor = True
 
     def laser_callback(self, laser_msg):
         """
@@ -111,13 +154,17 @@ class ParticleFilter(Node):
         Args:
             laser_msg (_type_): LaserScan
         """
-        if self.particles is None:
+        # Don't run the sensor model if no particles or update_sensor is false
+        if self.particles is None or not self.update_sensor:
             return
         observation = laser_msg.ranges
         weights = self.sensor_model.evaluate(self.particles, observation)
         # if weights is None:
         #     return
         self.particles = self.resample(self.particles, weights)
+
+        # Flip update_sensor to false to wait for the timer callback.
+        # Computation runs at 60 kHz so this update method is solid
 
 
         # current_time = self.get_clock().now().nanoseconds
@@ -142,7 +189,7 @@ class ParticleFilter(Node):
         # self.get_logger().info(f'Scan Latency: {dt}s')
 
 
-        self.update_average()
+        self.update_sensor = False
 
     def odom_callback(self, odometry_msg):
         """
@@ -155,10 +202,15 @@ class ParticleFilter(Node):
             return
 
         # Get the current time
-        current_time = self.get_clock().now().nanoseconds
+        current_time = odometry_msg.header.stamp.sec + (odometry_msg.header.stamp.nanosec * 1e-9)
+
+        # Don't run the odometry model if we've never set a last time to compare to
+        if self.last_time is None:
+            self.last_time = current_time
+            return
 
         # Get the change in time from previous to current call to this function
-        dt = (current_time - self.last_time) * 1e-9
+        dt = current_time - self.last_time
 
         # Get the twist of the robot
         current_odom_twist = odometry_msg.twist.twist
@@ -174,6 +226,8 @@ class ParticleFilter(Node):
 
         # Set last time to current time
         self.last_time = current_time
+
+        # Update the average pose estimation
 
         # ct = self.get_clock().now().nanoseconds
         # odom_time = odometry_msg.header.stamp.nanosec
@@ -197,36 +251,6 @@ class ParticleFilter(Node):
         # self.get_logger().info(f'Transport Latency: {dt}s')
 
         self.update_average()
-
-        # # Get the current xyz position of the robot
-        # current_odom_pose = odometry_msg.pose.pose
-
-        # # Get the rotation (yaw from the euler angles)
-        # current_odom_quat = current_odom_pose.orientation
-        # current_odom_quat_list = [current_odom_quat.x, current_odom_quat.y, current_odom_quat.z, current_odom_quat.w]
-
-        # # get it in euler
-        # r = R.from_quat(current_odom_quat_list)
-        # current_odom_yaw = r.as_euler('xyz')[2]
-
-
-        # current_odom_info = np.array([current_odom_pose.position.x, current_odom_pose.position.y, current_odom_yaw])
-
-        # if self.last_odom_info is None:
-        #     self.last_odom_info = current_odom_info
-        #     return
-
-        # # Subtract from last saved odometry to get the change in odometry deltax
-        # odom_change = current_odom_info - self.last_odom_info
-        # self.last_odom_info = current_odom_info
-
-        # self.particles = self.motion_model.evaluate(self.particles, odom_change)
-
-        # self.last_odom_info = current_odom_info
-
-        # self.last_time = current_time
-        # self.update_average()
-
 
     def pose_callback(self, pose_msg):
         """
@@ -279,6 +303,34 @@ class ParticleFilter(Node):
         # send out the new messages
         average_pose_estimate = self.create_odom_message(mean_x, mean_y, mean_rad)
         self.odom_pub.publish(average_pose_estimate)
+
+        # -- CTE analysis computation --
+        # Get the transform from map to base_link for CTE computation
+        try:
+            ground_truth_trans = self.buffer.lookup_transform('map', 'base_link', rclpy.time.Time(seconds=0))
+        except Exception as e:
+            return
+
+        ground_truth_x = ground_truth_trans.transform.translation.x
+        ground_truth_y = ground_truth_trans.transform.translation.y
+        ground_truth_quat = ground_truth_trans.transform.rotation
+        rot = R.from_quat([ground_truth_quat.x, ground_truth_quat.y, ground_truth_quat.z, ground_truth_quat.w])
+        ground_truth_theta = rot.as_euler('xyz')[2]
+
+        cte_x = abs(ground_truth_x - mean_x)
+        cte_y = abs(ground_truth_y - mean_y)
+
+        cte_pos_msg = Float32()
+        cte_pos = np.sqrt(cte_x**2 + cte_y**2)
+        cte_pos_msg.data = cte_pos
+        self.cte_pos_pub.publish(cte_pos_msg)
+
+        # Shortest angular arror
+        cte_theta_msg = Float32()
+        cte_theta = abs((ground_truth_theta - mean_rad + np.pi) % (2 * np.pi) - np.pi)
+        cte_theta_msg.data = cte_theta
+        self.cte_theta_pub.publish(cte_theta_msg)
+
 
     def create_odom_message(self, x_pos, y_pos, theta):
         msg = Odometry()
