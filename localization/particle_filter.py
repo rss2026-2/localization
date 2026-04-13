@@ -16,6 +16,8 @@ from sensor_msgs.msg import PointCloud2, LaserScan
 from sensor_msgs_py import point_cloud2
 from std_msgs.msg import Header
 from geometry_msgs.msg import TransformStamped
+from std_msgs.msg import Float32
+
 
 class ParticleFilter(Node):
 
@@ -70,6 +72,10 @@ class ParticleFilter(Node):
         # added
         self.particle_pub = self.create_publisher(PoseArray, "/particles", 1)
 
+        self.scan_time_pub = self.create_publisher(Float32, "/timing/sensor_model", 1)
+        self.odom_time_pub = self.create_publisher(Float32, "/timing/motion_model", 1)
+
+
         # Initialize the models
         self.motion_model = MotionModel(self)
         self.sensor_model = SensorModel(self)
@@ -96,6 +102,7 @@ class ParticleFilter(Node):
         # Initialize particles to a default pose so callbacks don't crash before /initialpose.
         self.particles = np.zeros((self.num_particles, 3), dtype=float)
         self.updates = 0
+        self.thinking_times = []
 
     def laser_callback(self, laser_msg):
         """
@@ -111,6 +118,30 @@ class ParticleFilter(Node):
         # if weights is None:
         #     return
         self.particles = self.resample(self.particles, weights)
+
+
+        # current_time = self.get_clock().now().nanoseconds
+        # scan_time = laser_msg.header.stamp.nanosec
+        # # Get the change in time from previous to current call to this function
+        # dt = (current_time - scan_time) * 1e-9
+        # self.scan_time_pub.publish(Float32(data=dt))
+
+        scan_time = self.get_clock().now().from_msg(laser_msg.header.stamp)
+
+        # 2. Get current time as a ROS Time object
+        current_time = self.get_clock().now()
+
+        # 3. Subtracting two Time objects returns a Duration object
+        duration = current_time - scan_time
+
+        # 4. Convert Duration to seconds (as a float)
+        dt = duration.nanoseconds * 1e-9
+        # self.get_logger().info(f'{duration}')
+
+        self.scan_time_pub.publish(Float32(data=dt))
+        # self.get_logger().info(f'Scan Latency: {dt}s')
+
+
         self.update_average()
 
     def odom_callback(self, odometry_msg):
@@ -143,6 +174,28 @@ class ParticleFilter(Node):
 
         # Set last time to current time
         self.last_time = current_time
+
+        # ct = self.get_clock().now().nanoseconds
+        # odom_time = odometry_msg.header.stamp.nanosec
+        # # Get the change in time from previous to current call to this function
+        # dt = (ct - odom_time) * 1e-9
+        # self.odom_time_pub.publish(Float32(data =dt))
+
+        odom_time = self.get_clock().now().from_msg(odometry_msg.header.stamp)
+
+        # 2. Get current time as a ROS Time object
+        current_time = self.get_clock().now()
+
+        # 3. Subtracting two Time objects returns a Duration object
+        duration = current_time - odom_time
+
+        # 4. Convert Duration to seconds (as a float)
+        dt = duration.nanoseconds * 1e-9
+
+
+        self.odom_time_pub.publish(Float32(data=dt))
+        # self.get_logger().info(f'Transport Latency: {dt}s')
+
         self.update_average()
 
         # # Get the current xyz position of the robot
