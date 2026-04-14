@@ -37,7 +37,7 @@ class ParticleFilter(Node):
         self.is_real_world = self.get_parameter('is_real_world').get_parameter_value().bool_value
 
         # Put sensor model on a timer
-        self.declare_parameter('timer_period', 1.5)
+        self.declare_parameter('timer_period', 1.1)
         timer_period = self.get_parameter('timer_period').get_parameter_value().double_value
 
         #  *Important Note #1:* It is critical for your particle
@@ -122,18 +122,6 @@ class ParticleFilter(Node):
         self.particles = np.zeros((self.num_particles, 3), dtype=float)
         self.updates = 0
         self.thinking_times = []
-
-        # Initialize variables
-        self.last_odom_info = None
-        self.last_time = None
-        self.update_sensor = False
-
-
-        self.get_logger().info("=============+READY+=============")
-
-    def timer_callback(self):
-        # Flip update_sensor to true
-        self.update_sensor = True
 
         # Initialize variables
         self.last_odom_info = None
