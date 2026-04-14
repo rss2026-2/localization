@@ -16,7 +16,7 @@ from sensor_msgs.msg import PointCloud2, LaserScan
 from sensor_msgs_py import point_cloud2
 from std_msgs.msg import Header, Float32
 from tf2_ros.buffer import Buffer
-from tf2_ros.transform_listener import TransformListener
+from tf2_ros import TransformBroadcaster
 from geometry_msgs.msg import TransformStamped
 import numpy as np
 from std_msgs.msg import Float32
@@ -114,7 +114,8 @@ class ParticleFilter(Node):
 
         self.timer = self.create_timer(timer_period, self.timer_callback)
 
-        # Initialize tf buffer to transform base link to map
+        # Initialize tf broadcaster and listener
+        self.tf_broadcaster = TransformBroadcaster(self)
         self.buffer = Buffer()
         self.listener = TransformListener(self.buffer, self)
 
@@ -292,11 +293,30 @@ class ParticleFilter(Node):
         average_pose_estimate = self.create_odom_message(mean_x, mean_y, mean_rad)
         self.odom_pub.publish(average_pose_estimate)
 
+        # Broadcast the transform
+        t = TransformStamped()
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = 'map'
+        t.child_frame_id = self.particle_filter_frame
+
+        t.transform.translation.x = float(mean_x)
+        t.transform.translation.y = float(mean_y)
+        t.transform.translation.z = 0.0
+
+        q = R.from_euler('z', mean_rad).as_quat()
+        t.transform.rotation.x = float(q[0])
+        t.transform.rotation.y = float(q[1])
+        t.transform.rotation.z = float(q[2])
+        t.transform.rotation.w = float(q[3])
+
+        self.tf_broadcaster.sendTransform(t)
+
         # -- CTE analysis computation --
         # Get the transform from map to base_link for CTE computation
         try:
             ground_truth_trans = self.buffer.lookup_transform('map', 'base_link', rclpy.time.Time(seconds=0))
-        except Exception as e:
+        except tf2_ros.TransformException as e:
+            self.get_logger().info(f'Could not transform {source_frame} to {target_frame}: {ex}')
             return
 
         ground_truth_x = ground_truth_trans.transform.translation.x
@@ -381,7 +401,16 @@ class ParticleFilter(Node):
             print("Could not resample nodes because weights were missing.")
             return
 
-        weights = weights/sum(weights)
+        # Get the sum of all the weights
+        weight_sum = np.sum(weights)
+
+        # Div by zero check
+        if weight_sum == 0.0:
+            self.get_logger().warn("All particle weights are zero, resetting to uniform distribution.")
+            weights = np.ones(len(weights)) / len(weights)
+        else:
+            weights = weights / weight_sum
+
         weights = np.cumsum(weights)
 
         # resample the particles proportional to their weights
