@@ -12,9 +12,9 @@ class MotionModel:
         self.is_deterministic = node.is_deterministic
         
         # Define coefficients to control contribution of each parameter to each noise distribution corresponding to x,y,theta
-        self.a1 = 0.25 # Effect of position change on translational noise
-        self.a2 = 0.2 # Effect of orientation change on translational noise
-        self.a3 = 0.3 # Effect of position change on rotational noise
+        self.a1 = 0.38 # Effect of position change on translational noise
+        self.a2 = 0.3 # Effect of orientation change on translational noise
+        self.a3 = 0.4 # Effect of position change on rotational noise
         self.a4 = 0.65  # Effect of orientation change on rotational noise
         
         # Add a forward bias term to address particles appearing behind ground truth due to system latency in real-time runs

@@ -38,7 +38,7 @@ class ParticleFilter(Node):
         self.is_real_world = self.get_parameter('is_real_world').get_parameter_value().bool_value
 
         # Put sensor model on a timer
-        self.declare_parameter('timer_period', 1.1)
+        self.declare_parameter('timer_period', 1.0)
         timer_period = self.get_parameter('timer_period').get_parameter_value().double_value
 
         #  *Important Note #1:* It is critical for your particle
@@ -225,19 +225,19 @@ class ParticleFilter(Node):
         # dt = (ct - odom_time) * 1e-9
         # self.odom_time_pub.publish(Float32(data =dt))
 
-        odom_time = self.get_clock().now().from_msg(odometry_msg.header.stamp)
+        # odom_time = self.get_clock().now().from_msg(odometry_msg.header.stamp)
 
         # 2. Get current time as a ROS Time object
-        current_time = self.get_clock().now()
+        # current_time = self.get_clock().now()
 
         # 3. Subtracting two Time objects returns a Duration object
-        duration = current_time - odom_time
+        # duration = current_time - odom_time
 
         # 4. Convert Duration to seconds (as a float)
-        dt = duration.nanoseconds * 1e-9
+        # dt = duration.nanoseconds * 1e-9
 
 
-        self.odom_time_pub.publish(Float32(data=dt))
+        # self.odom_time_pub.publish(Float32(data=dt))
         # self.get_logger().info(f'Transport Latency: {dt}s')
 
         self.update_average()
@@ -295,22 +295,22 @@ class ParticleFilter(Node):
         self.odom_pub.publish(average_pose_estimate)
 
         # Broadcast the transform
-        t = TransformStamped()
-        t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = 'map'
-        t.child_frame_id = self.particle_filter_frame
+        # t = TransformStamped()
+        # t.header.stamp = self.get_clock().now().to_msg()
+        # t.header.frame_id = 'map'
+        # t.child_frame_id = self.particle_filter_frame
 
-        t.transform.translation.x = float(mean_x)
-        t.transform.translation.y = float(mean_y)
-        t.transform.translation.z = 0.0
+        # t.transform.translation.x = float(mean_x)
+        # t.transform.translation.y = float(mean_y)
+        # t.transform.translation.z = 0.0
 
-        q = R.from_euler('z', mean_rad).as_quat()
-        t.transform.rotation.x = float(q[0])
-        t.transform.rotation.y = float(q[1])
-        t.transform.rotation.z = float(q[2])
-        t.transform.rotation.w = float(q[3])
+        # q = R.from_euler('z', mean_rad).as_quat()
+        # t.transform.rotation.x = float(q[0])
+        # t.transform.rotation.y = float(q[1])
+        # t.transform.rotation.z = float(q[2])
+        # t.transform.rotation.w = float(q[3])
 
-        self.tf_broadcaster.sendTransform(t)
+        # self.tf_broadcaster.sendTransform(t)
 
         # # -- CTE analysis computation --
         # # Get the transform from map to base_link for CTE computation
