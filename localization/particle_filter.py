@@ -16,7 +16,8 @@ from sensor_msgs.msg import PointCloud2, LaserScan
 from sensor_msgs_py import point_cloud2
 from std_msgs.msg import Header, Float32
 from tf2_ros.buffer import Buffer
-from tf2_ros import TransformBroadcaster
+from tf2_ros.transform_listener import TransformListener
+from tf2_ros import TransformBroadcaster, TransformException
 from geometry_msgs.msg import TransformStamped
 import numpy as np
 from std_msgs.msg import Float32
@@ -311,33 +312,33 @@ class ParticleFilter(Node):
 
         self.tf_broadcaster.sendTransform(t)
 
-        # -- CTE analysis computation --
-        # Get the transform from map to base_link for CTE computation
-        try:
-            ground_truth_trans = self.buffer.lookup_transform('map', 'base_link', rclpy.time.Time(seconds=0))
-        except tf2_ros.TransformException as e:
-            self.get_logger().info(f'Could not transform {source_frame} to {target_frame}: {ex}')
-            return
+        # # -- CTE analysis computation --
+        # # Get the transform from map to base_link for CTE computation
+        # try:
+        #     ground_truth_trans = self.buffer.lookup_transform('map', 'base_link', rclpy.time.Time(seconds=0))
+        # except TransformException as e:
+        #     self.get_logger().info(f'Could not transform {t.header.frame_id} to {t.child_frame_id}: {e}')
+        #     return
 
-        ground_truth_x = ground_truth_trans.transform.translation.x
-        ground_truth_y = ground_truth_trans.transform.translation.y
-        ground_truth_quat = ground_truth_trans.transform.rotation
-        rot = R.from_quat([ground_truth_quat.x, ground_truth_quat.y, ground_truth_quat.z, ground_truth_quat.w])
-        ground_truth_theta = rot.as_euler('xyz')[2]
+        # ground_truth_x = ground_truth_trans.transform.translation.x
+        # ground_truth_y = ground_truth_trans.transform.translation.y
+        # ground_truth_quat = ground_truth_trans.transform.rotation
+        # rot = R.from_quat([ground_truth_quat.x, ground_truth_quat.y, ground_truth_quat.z, ground_truth_quat.w])
+        # ground_truth_theta = rot.as_euler('xyz')[2]
 
-        cte_x = abs(ground_truth_x - mean_x)
-        cte_y = abs(ground_truth_y - mean_y)
+        # cte_x = abs(ground_truth_x - mean_x)
+        # cte_y = abs(ground_truth_y - mean_y)
 
-        cte_pos_msg = Float32()
-        cte_pos = np.sqrt(cte_x**2 + cte_y**2)
-        cte_pos_msg.data = cte_pos
-        self.cte_pos_pub.publish(cte_pos_msg)
+        # cte_pos_msg = Float32()
+        # cte_pos = np.sqrt(cte_x**2 + cte_y**2)
+        # cte_pos_msg.data = cte_pos
+        # self.cte_pos_pub.publish(cte_pos_msg)
 
-        # Shortest angular arror
-        cte_theta_msg = Float32()
-        cte_theta = abs((ground_truth_theta - mean_rad + np.pi) % (2 * np.pi) - np.pi)
-        cte_theta_msg.data = cte_theta
-        self.cte_theta_pub.publish(cte_theta_msg)
+        # # Shortest angular arror
+        # cte_theta_msg = Float32()
+        # cte_theta = abs((ground_truth_theta - mean_rad + np.pi) % (2 * np.pi) - np.pi)
+        # cte_theta_msg.data = cte_theta
+        # self.cte_theta_pub.publish(cte_theta_msg)
 
 
     def create_odom_message(self, x_pos, y_pos, theta):
