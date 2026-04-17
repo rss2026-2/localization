@@ -4,22 +4,33 @@ class MotionModel:
 
     def __init__(self, node):
         ####################################
-        # TODO
-        # Do any precomputation for the motion
-        # model here.
         
-        # Pass in whether running model as deterministic
-        self.is_deterministic = node.is_deterministic
+        # -- Declared parameters --
+        node.declare_parameter('motion_pos_trans_noise', 0.38)
+        motion_pos_trans_noise = node.get_parameter('motion_pos_trans_noise').get_parameter_value().double_value
         
-        # Define coefficients to control contribution of each parameter to each noise distribution corresponding to x,y,theta
-        self.a1 = 0.38 # Effect of position change on translational noise
-        self.a2 = 0.3 # Effect of orientation change on translational noise
-        self.a3 = 0.4 # Effect of position change on rotational noise
-        self.a4 = 0.65  # Effect of orientation change on rotational noise
+        node.declare_parameter('motion_orient_trans_noise', 0.3)
+        motion_orient_trans_noise = node.get_parameter('motion_orient_trans_noise').get_parameter_value().double_value
+        
+        node.declare_parameter('motion_pos_rot_noise', 0.4)
+        motion_pos_rot_noise = node.get_parameter('motion_pos_rot_noise').get_parameter_value().double_value
+        
+        node.declare_parameter('motion_orient_rot_noise', 0.65)
+        motion_orient_rot_noise = node.get_parameter('motion_orient_rot_noise').get_parameter_value().double_value
         
         # Add a forward bias term to address particles appearing behind ground truth due to system latency in real-time runs
-        self.forward_bias = 1.10 if node.is_real_world else 1.00
+        self.declare_parameter('motion_forward_bias', 1.00)
+        self.forward_bias = self.get_parameter("motion_forward_bias").get_parameter_value().double_value
+
+        self.declare_parameter('deterministic', False)
+        self.is_deterministic = self.get_parameter('deterministic').get_parameter_value().bool_value
         
+        # Coefficients to control contribution of each parameter to each noise distribution corresponding to x,y,theta
+        self.a1 = motion_pos_trans_noise # Effect of position change on translational noise
+        self.a2 = motion_orient_trans_noise # Effect of orientation change on translational noise
+        self.a3 = motion_pos_rot_noise # Effect of position change on rotational noise
+        self.a4 = motion_orient_rot_noise  # Effect of orientation change on rotational noise
+                
         # Note: We have large noise coefficients because our racecar has significant drift when giving a forward command, 
         # causing us to make a lot of micro-rotations to adjust, causing even more input noise into our odometry instead 
         # of just us being able to drive straight and rely on accurate odometry. Therefore we inject more noise than usual

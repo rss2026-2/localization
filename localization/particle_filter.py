@@ -28,34 +28,26 @@ class ParticleFilter(Node):
     def __init__(self):
         super().__init__("particle_filter")
 
+        # -- Declared parameters --
+        
         self.declare_parameter('particle_filter_frame', "default")
         self.particle_filter_frame = self.get_parameter('particle_filter_frame').get_parameter_value().string_value
 
-        self.declare_parameter('deterministic', False)
-        self.is_deterministic = self.get_parameter('deterministic').get_parameter_value().bool_value
-
-        self.declare_parameter('is_real_world', True)
-        self.is_real_world = self.get_parameter('is_real_world').get_parameter_value().bool_value
+        self.declare_parameter('num_particles', 100)
+        self.num_particles = self.get_parameter("num_particles").value # number of particles we are using
 
         # Put sensor model on a timer
         self.declare_parameter('timer_period', 1.0)
         timer_period = self.get_parameter('timer_period').get_parameter_value().double_value
 
-        #  *Important Note #1:* It is critical for your particle
-        #     filter to obtain the following topic names from the
-        #     parameters for the autograder to work correctly. Note
-        #     that while the Odometry message contains both a pose and
-        #     a twist component, you will only be provided with the
-        #     twist component, so you should rely only on that
-        #     information, and *not* use the pose component.
-
-        self.declare_parameter('odom_topic', "/odom")
         self.declare_parameter('scan_topic', "/scan")
-        self.declare_parameter('num_particles', 100)
-
         self.scan_topic = self.get_parameter("scan_topic").get_parameter_value().string_value
+        
+        self.declare_parameter('odom_topic', "/odom")
         self.odom_topic = self.get_parameter("odom_topic").get_parameter_value().string_value
 
+        # -- Publishers and subscribers --
+        
         self.laser_sub = self.create_subscription(LaserScan, self.scan_topic,
                                                   self.laser_callback,
                                                   1)
@@ -64,76 +56,51 @@ class ParticleFilter(Node):
                                                  self.odom_callback,
                                                  1)
 
-        #  *Important Note #2:* You must respond to pose
-        #     initialization requests sent to the /initialpose
-        #     topic. You can test that this works properly using the
-        #     "Pose Estimate" feature in RViz, which publishes to
-        #     /initialpose.
-
         self.pose_sub = self.create_subscription(PoseWithCovarianceStamped, "/initialpose",
                                                  self.pose_callback,
                                                  1)
 
-        #  *Important Note #3:* You must publish your pose estimate to
-        #     the following topic. In particular, you must use the
-        #     pose field of the Odometry message. You do not need to
-        #     provide the twist part of the Odometry message. The
-        #     odometry you publish here should be with respect to the
-        #     "/map" frame.
-
         self.odom_pub = self.create_publisher(Odometry, "/pf/pose/odom", 1)
 
-        # added
         self.particle_pub = self.create_publisher(PoseArray, "/particles", 1)
 
+        # Publishers for timing analysis
         self.scan_time_pub = self.create_publisher(Float32, "/timing/sensor_model", 1)
         self.odom_time_pub = self.create_publisher(Float32, "/timing/motion_model", 1)
 
+        # Publishers for cte analysis
+        self.cte_pos_pub = self.create_publisher(Float32, "/cross_track_pos_error", 1)
+        self.cte_theta_pub = self.create_publisher(Float32, "/cross_track_theta_error", 1)
 
         # Initialize the models
         self.motion_model = MotionModel(self)
         self.sensor_model = SensorModel(self)
 
-        # added
-        self.num_particles = self.get_parameter("num_particles").value # number of particles we are using
-
-        # Implement the MCL algorithm
-        # using the sensor model and the motion model
-        #
-        # Make sure you include some way to initialize
-        # your particles, ideally with some sort
-        # of interactive interface in rviz
-        #
-        # Publish a transformation frame between the map
-        # and the particle_filter_frame.
-
-        # added:
-
-        # Add cte publishers
-        self.cte_pos_pub = self.create_publisher(Float32, "/cross_track_pos_error", 1)
-        self.cte_theta_pub = self.create_publisher(Float32, "/cross_track_theta_error", 1)
-
+        # Timer for the sensor model
         self.timer = self.create_timer(timer_period, self.timer_callback)
 
-        # Initialize tf broadcaster and listener
-        self.tf_broadcaster = TransformBroadcaster(self)
-        self.buffer = Buffer()
-        self.listener = TransformListener(self.buffer, self)
-
+        # -- Variable initializations --
+        
         # Initialize particles to a default pose so callbacks don't crash before /initialpose.
         self.particles = np.zeros((self.num_particles, 3), dtype=float)
         self.updates = 0
         self.thinking_times = []
 
-        # Initialize variables
         self.last_odom_info = None
         self.last_time = None
         self.update_sensor = False
 
+        # # Initialize tf broadcaster and listener
+        self.tf_broadcaster = TransformBroadcaster(self)
+        self.buffer = Buffer()
+        self.listener = TransformListener(self.buffer, self)
 
-        self.get_logger().info("=============+READY+=============")
+        self.get_logger().info("=============+LOCALIZATION READY+=============")
 
     def timer_callback(self):
+        """
+        Timer callback controlling the update rate of the sensor model to prevent particle collapse.
+        """
         # Flip update_sensor to true
         self.update_sensor = True
 
@@ -155,31 +122,25 @@ class ParticleFilter(Node):
 
         # Flip update_sensor to false to wait for the timer callback.
         # Computation runs at 60 kHz so this update method is solid
-
-
-        # current_time = self.get_clock().now().nanoseconds
-        # scan_time = laser_msg.header.stamp.nanosec
-        # # Get the change in time from previous to current call to this function
-        # dt = (current_time - scan_time) * 1e-9
-        # self.scan_time_pub.publish(Float32(data=dt))
-
-        scan_time = self.get_clock().now().from_msg(laser_msg.header.stamp)
-
-        # 2. Get current time as a ROS Time object
-        current_time = self.get_clock().now()
-
-        # 3. Subtracting two Time objects returns a Duration object
-        duration = current_time - scan_time
-
-        # 4. Convert Duration to seconds (as a float)
-        dt = duration.nanoseconds * 1e-9
-        # self.get_logger().info(f'{duration}')
-
-        self.scan_time_pub.publish(Float32(data=dt))
-        # self.get_logger().info(f'Scan Latency: {dt}s')
-
-
         self.update_sensor = False
+
+        # -- Timing analysis for sensor model --
+        
+        # # scan_time = self.get_clock().now().from_msg(laser_msg.header.stamp)
+
+        # # 2. Get current time as a ROS Time object
+        # current_time = self.get_clock().now()
+
+        # # 3. Subtracting two Time objects returns a Duration object
+        # duration = current_time - scan_time
+
+        # # 4. Convert Duration to seconds (as a float)
+        # dt = duration.nanoseconds * 1e-9
+        # # self.get_logger().info(f'{duration}')
+
+        # self.scan_time_pub.publish(Float32(data=dt))
+        # # self.get_logger().info(f'Scan Latency: {dt}s')
+
 
     def odom_callback(self, odometry_msg):
         """
@@ -202,6 +163,7 @@ class ParticleFilter(Node):
         # Get the change in time from previous to current call to this function
         dt = current_time - self.last_time
 
+        # We are only provided the twist component of odometry, so we should not use the pose component, only twist
         # Get the twist of the robot
         current_odom_twist = odometry_msg.twist.twist
         x_change = dt * current_odom_twist.linear.x
@@ -218,7 +180,10 @@ class ParticleFilter(Node):
         self.last_time = current_time
 
         # Update the average pose estimation
+        self.update_average()
 
+        # -- Timing analysis for motion model --
+        
         # ct = self.get_clock().now().nanoseconds
         # odom_time = odometry_msg.header.stamp.nanosec
         # # Get the change in time from previous to current call to this function
@@ -227,20 +192,19 @@ class ParticleFilter(Node):
 
         # odom_time = self.get_clock().now().from_msg(odometry_msg.header.stamp)
 
-        # 2. Get current time as a ROS Time object
+        # # 2. Get current time as a ROS Time object
         # current_time = self.get_clock().now()
 
-        # 3. Subtracting two Time objects returns a Duration object
+        # # 3. Subtracting two Time objects returns a Duration object
         # duration = current_time - odom_time
 
-        # 4. Convert Duration to seconds (as a float)
+        # # 4. Convert Duration to seconds (as a float)
         # dt = duration.nanoseconds * 1e-9
 
 
         # self.odom_time_pub.publish(Float32(data=dt))
         # self.get_logger().info(f'Transport Latency: {dt}s')
 
-        self.update_average()
 
     def pose_callback(self, pose_msg):
         """
@@ -294,23 +258,27 @@ class ParticleFilter(Node):
         average_pose_estimate = self.create_odom_message(mean_x, mean_y, mean_rad)
         self.odom_pub.publish(average_pose_estimate)
 
+        # -- Broadcasting transform from map to particle filter frame (base_link) --
+
+        # Create the transform message
+        t = TransformStamped()
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = 'map' # Transform from map frame
+        t.child_frame_id = self.particle_filter_frame # Transform to particle filter frame
+
+        # Set the translation and rotation of the transform based on the average pose estimate (estimate of base_link in map frame)
+        t.transform.translation.x = float(mean_x)
+        t.transform.translation.y = float(mean_y)
+        t.transform.translation.z = 0.0
+
+        q = R.from_euler('z', mean_rad).as_quat()
+        t.transform.rotation.x = float(q[0])
+        t.transform.rotation.y = float(q[1])
+        t.transform.rotation.z = float(q[2])
+        t.transform.rotation.w = float(q[3])
+
         # Broadcast the transform
-        # t = TransformStamped()
-        # t.header.stamp = self.get_clock().now().to_msg()
-        # t.header.frame_id = 'map'
-        # t.child_frame_id = self.particle_filter_frame
-
-        # t.transform.translation.x = float(mean_x)
-        # t.transform.translation.y = float(mean_y)
-        # t.transform.translation.z = 0.0
-
-        # q = R.from_euler('z', mean_rad).as_quat()
-        # t.transform.rotation.x = float(q[0])
-        # t.transform.rotation.y = float(q[1])
-        # t.transform.rotation.z = float(q[2])
-        # t.transform.rotation.w = float(q[3])
-
-        # self.tf_broadcaster.sendTransform(t)
+        self.tf_broadcaster.sendTransform(t)
 
         # # -- CTE analysis computation --
         # # Get the transform from map to base_link for CTE computation

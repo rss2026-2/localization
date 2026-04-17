@@ -20,6 +20,12 @@ class SensorModel:
         node.declare_parameter('scan_theta_discretization', 1.0)
         node.declare_parameter('scan_field_of_view', 1.0)
         node.declare_parameter('lidar_scale_to_map_scale', 1.0)
+        # added
+        node.declare_parameter('alpha_hit', 0.71)
+        node.declare_parameter('alpha_short', 0.10)
+        node.declare_parameter('alpha_max', 0.07)
+        node.declare_parameter('alpha_rand', 0.12)
+        node.declare_parameter('sigma_hit', 10.0)
 
         self.map_topic = node.get_parameter('map_topic').get_parameter_value().string_value
         self.num_beams_per_particle = node.get_parameter('num_beams_per_particle').get_parameter_value().integer_value
@@ -31,11 +37,11 @@ class SensorModel:
 
         ####################################
         # Adjust these parameters
-        self.alpha_hit = 0.71
-        self.alpha_short = 0.10
-        self.alpha_max = 0.07
-        self.alpha_rand = 0.12
-        self.sigma_hit = 10.0
+        self.alpha_hit = node.get_parameter('alpha_hit').get_parameter_value().double_value
+        self.alpha_short = node.get_parameter('alpha_short').get_parameter_value().double_value
+        self.alpha_max = node.get_parameter('alpha_max').get_parameter_value().double_value
+        self.alpha_rand = node.get_parameter('alpha_rand').get_parameter_value().double_value
+        self.sigma_hit = node.get_parameter('sigma_hit').get_parameter_value().double_value
 
         # Your sensor table will be a `table_width` x `table_width` np array:
         self.table_width = 201
