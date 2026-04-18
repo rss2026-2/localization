@@ -1,0 +1,7 @@
+<!-- TODO: CREATE FINAL CHALLENGE PACKAGE -->
+
+<launch>
+    <node pkg="localization" exec="particle_filter" name="particle_filter" output="screen">
+        <param from="$(find-pkg-share final_challenge)/localization_config.yaml"/>
+    </node>
+</launch>
