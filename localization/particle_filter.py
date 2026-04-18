@@ -22,6 +22,8 @@ from geometry_msgs.msg import TransformStamped
 import numpy as np
 from std_msgs.msg import Float32
 
+from viz_utils.visualization_tools import VisualizationTools
+
 
 class ParticleFilter(Node):
 
@@ -338,22 +340,8 @@ class ParticleFilter(Node):
         if self.particles is None:
             return
 
-        msg = PoseArray()
-        msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = 'map'
-
-        for x, y, theta in self.particles:
-            pose = Pose()
-            pose.position.x = float(x)
-            pose.position.y = float(y)
-            pose.position.z = 0.0
-            qx, qy, qz, qw = R.from_euler('z', theta).as_quat()
-            pose.orientation.x = float(qx)
-            pose.orientation.y = float(qy)
-            pose.orientation.z = float(qz)
-            pose.orientation.w = float(qw)
-            msg.poses.append(pose)
-        self.particle_pub.publish(msg)
+        stamp = self.get_clock().now().to_msg()
+        VisualizationTools.draw_pose_array(self.particles, self.particle_pub, stamp, frame='map')
 
     def resample(self, particles, weights):
         """
