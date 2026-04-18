@@ -19,11 +19,11 @@ class MotionModel:
         motion_orient_rot_noise = node.get_parameter('motion_orient_rot_noise').get_parameter_value().double_value
         
         # Add a forward bias term to address particles appearing behind ground truth due to system latency in real-time runs
-        self.declare_parameter('motion_forward_bias', 1.00)
-        self.forward_bias = self.get_parameter("motion_forward_bias").get_parameter_value().double_value
+        node.declare_parameter('motion_forward_bias', 1.00)
+        self.forward_bias = node.get_parameter("motion_forward_bias").get_parameter_value().double_value
 
-        self.declare_parameter('deterministic', False)
-        self.is_deterministic = self.get_parameter('deterministic').get_parameter_value().bool_value
+        node.declare_parameter('deterministic', False)
+        self.is_deterministic = node.get_parameter('deterministic').get_parameter_value().bool_value
         
         # Coefficients to control contribution of each parameter to each noise distribution corresponding to x,y,theta
         self.a1 = motion_pos_trans_noise # Effect of position change on translational noise
