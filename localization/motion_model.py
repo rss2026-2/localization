@@ -9,8 +9,8 @@ class MotionModel:
         # model here.
 
         self.deterministic = False
-        self.translational_sigma = 1.0
-        self.rotational_sigma = 1.0
+        self.translational_sigma = 5.0
+        self.rotational_sigma = 0.5
 
         ####################################
 

@@ -106,6 +106,7 @@ class ParticleFilter(Node):
         """
         if self.particles is None:
             return
+
         observation = laser_msg.ranges
         weights = self.sensor_model.evaluate(self.particles, observation)
         # if weights is None:

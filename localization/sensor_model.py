@@ -168,8 +168,11 @@ class SensorModel:
         # assign normalized, culmulative sum weights to each particle, combine beam weights
         if scans.ndim == 2 and obs.ndim == 1:
             obs = np.broadcast_to(obs, scans.shape)
+
         weights = self.sensor_model_table[obs, scans]
         weights = np.prod(weights, axis=1)
+
+        weights **= 0.7
 
         return weights
         ####################################
@@ -180,7 +183,7 @@ class SensorModel:
         self.map = np.clip(self.map, 0, 1)
 
         self.resolution = map_msg.info.resolution
-
+        self.get_logger().info(self.resolution)
         # Convert the origin to a tuple
         origin_p = map_msg.info.origin.position
         origin_o = map_msg.info.origin.orientation
